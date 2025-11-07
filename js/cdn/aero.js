@@ -158,3 +158,31 @@ if(document.body.style.top =="40px"){ document.body.style.top ="0px"};
     renderNextBatch();
   });
 })();
+
+//Ad manager code loader
+(function() {
+  // Load GPT library dynamically
+  var gptScript = document.createElement('script');
+  gptScript.src = "https://securepubads.g.doubleclick.net/tag/js/gpt.js";
+  gptScript.async = true;
+  gptScript.crossOrigin = "anonymous";
+  gptScript.onload = function() {
+    // Initialize GPT after it’s loaded
+    window.googletag = window.googletag || { cmd: [] };
+
+    googletag.cmd.push(function() {
+      googletag.defineSlot(
+        '/21737918760/300*600',
+        [300, 600],
+        'div-gpt-ad-1762551965260-0'
+      ).addService(googletag.pubads());
+
+      googletag.pubads().enableSingleRequest();
+      googletag.pubads().collapseEmptyDivs();
+      googletag.enableServices();
+    });
+  };
+  document.head.appendChild(gptScript);
+})();
+
+
