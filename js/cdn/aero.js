@@ -13,4 +13,148 @@ if(document.body.style.top =="40px"){ document.body.style.top ="0px"};
 
 
   
+//comment widget
 
+
+(function(){
+  let initialized = false; // Prevent multiple triggers
+
+  window.addEventListener("scroll", async function onScroll(){
+    if(initialized) return;
+    initialized = true;
+    window.removeEventListener("scroll", onScroll);
+
+    const list = document.getElementById("comments-list");
+    const loadMorePostsBtn = document.getElementById("load-more-posts");
+    const POSTS_PER_BATCH = 10;
+    const COMMENTS_PER_POST = 10;
+    const BLOGGER_BLANK = "https://img1.blogblog.com/img/blank.gif";
+
+    // 🧹 Clean comment text: remove HTML, links, and link text
+    function cleanText(html){
+      const div = document.createElement("div");
+      div.innerHTML = html;
+
+      // Remove <a> tags entirely
+      div.querySelectorAll("a").forEach(a => a.remove());
+
+      let text = div.textContent || div.innerText || "";
+      text = text.replace(/\b(?:https?:\/\/|www\.)\S+\b/gi, ""); // Remove URLs
+      return text.trim();
+    }
+
+    async function fetchPostTitle(url){
+      try {
+        const res = await fetch(url);
+        const html = await res.text();
+        const match = html.match(/<title>(.*?)<\/title>/i);
+        if(match) return match[1].replace(" - KasWorld Aero", "").trim();
+      } catch(err){
+        console.warn("Cannot fetch post title", url, err);
+      }
+      return url;
+    }
+
+    let allPosts = [];
+    async function fetchComments(){
+      const res = await fetch("https://kasworld-aero.blogspot.com/feeds/comments/default?alt=json&max-results=100");
+      const data = await res.json();
+      const entries = data.feed.entry || [];
+      const postsMap = {};
+
+      for(const e of entries){
+        const commentLink = e.link.find(l=>l.rel==="alternate").href;
+        const postLink = commentLink.split("?")[0];
+        if(!postsMap[postLink]) postsMap[postLink] = [];
+
+        // Avatar fix
+        let avatar = e.author[0].gd$image ? e.author[0].gd$image.src : BLOGGER_BLANK;
+        if(avatar.includes("https://img1.blogblog.com/img/b16-rounded.gif")){
+          avatar = BLOGGER_BLANK;
+        }
+
+        postsMap[postLink].push({
+          author: e.author[0].name.$t,
+          avatar,
+          content: cleanText(e.content ? e.content.$t : (e.summary ? e.summary.$t : "")),
+          published: new Date(e.published.$t).toLocaleString()
+        });
+      }
+
+      const postLinks = Object.keys(postsMap);
+      const titles = await Promise.all(postLinks.map(url => fetchPostTitle(url)));
+
+      allPosts = postLinks.map((link,i)=>({
+        link,
+        title: titles[i],
+        comments: postsMap[link].slice(0, COMMENTS_PER_POST)
+      }));
+    }
+
+    let postIndex = 0;
+
+    function renderNextBatch(){
+      const batch = allPosts.slice(postIndex, postIndex + POSTS_PER_BATCH);
+      batch.forEach(post=>{
+        const postLi = document.createElement("li");
+        postLi.className = "recent-post-item";
+
+        const recentContent = document.createElement("div");
+        recentContent.className = "recent-content";
+        recentContent.innerHTML = `
+          <div class="recent-title heading">
+            <a href="${post.link}" target="_blank">${post.title}</a>
+          </div>
+          <ul class="comments"></ul>
+        `;
+
+        const loadMoreCommentBtn = document.createElement("button");
+        loadMoreCommentBtn.textContent = "More Comments";
+        loadMoreCommentBtn.className = "load-more-comments post-labels byline";
+        recentContent.appendChild(loadMoreCommentBtn);
+
+        postLi.appendChild(recentContent);
+        list.appendChild(postLi);
+
+        const commentsContainer = recentContent.querySelector(".comments");
+        let commentIndex = 0;
+        function showNextComment(){
+          if(commentIndex >= post.comments.length){
+            loadMoreCommentBtn.style.display = "none";
+            return;
+          }
+          const c = post.comments[commentIndex];
+          const li = document.createElement("li");
+          li.className = "comments-item";
+          li.innerHTML = `
+            <div class="avatar-image-container">
+              <img src="${c.avatar}" alt="${c.author}" loading="lazy">
+            </div>
+            <div class="comment-header">
+              <div class="user"><span>${c.author}</span></div>
+              <div class="datetime">${c.published}</div>
+            </div>
+            <div class="comment-content" itemprop="text">${c.content}</div>
+          `;
+          commentsContainer.appendChild(li);
+          commentIndex++;
+          if(commentIndex >= post.comments.length) loadMoreCommentBtn.style.display = "none";
+        }
+
+        showNextComment();
+        loadMoreCommentBtn.addEventListener("click", showNextComment);
+      });
+
+      postIndex += POSTS_PER_BATCH;
+      if(postIndex >= allPosts.length) loadMorePostsBtn.style.display = "none";
+    }
+
+    loadMorePostsBtn.addEventListener("click", function(e){
+      e.preventDefault();
+      renderNextBatch();
+    });
+
+    await fetchComments();
+    renderNextBatch();
+  });
+})();
